@@ -1,0 +1,31 @@
+#Get Paramters for VM and Resource Group Name
+Param(
+ [string]$VmName,
+ [string]$ResourceGroupName,
+ [string]$Location
+)
+
+# Use Managed Identity
+Connect-AzAccount -Identity
+
+# Variables for creating Disk
+$SnapshotResourceGroup = $resourceGroupName
+$snapshotName = $vmName + "-OSDisk-PrePatching-" + (Get-Date -format "ddMMyy")
+
+# Create snapshot
+# Get VM information
+$vm = Get-AzVM `
+    -ResourceGroupName $resourceGroupName `
+    -Name $vmName
+
+# Generate snapshot config
+$snapshot =  New-AzSnapshotConfig `
+    -SourceUri $vm.StorageProfile.OSDisk.ManagedDisk.Id `
+    -Location $location `
+    -CreateOption copy
+
+# Create snapshot
+New-AzSnapshot `
+    -Snapshot $snapshot `
+    -SnapshotName $snapshotName `
+    -ResourceGroupName $resourceGroupName

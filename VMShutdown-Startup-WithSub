@@ -1,0 +1,28 @@
+# Input Parameters for
+# - VmName: name of the vm to perform action to
+# - ResourceGroupName: resource group where the vm belongs to
+# - VmAction:action to perform (startup or shutdown)
+Param(
+ [String]$SubID,
+ [string]$VmName,
+ [string]$ResourceGroupName,
+ [ValidateSet("Startup", "Shutdown")]
+ [string]$VmAction
+]
+
+Write-Output "Connecting to azure via Connect-AzAccount -Identity"
+Connect-AzAccount -Identity 
+Write-Output "Successfully connected with Automation account's Managed Identity"
+
+# Select the correct subscription
+Set-AZContext -subscription $SubID
+
+# Startup VM
+IF ($VmAction -eq "Startup") {
+    Start-AzVM -Name $VmName -ResourceGroupName $ResourceGroupName
+}
+ 
+# Shutdown VM
+IF ($VmAction -eq "Shutdown") {
+    Stop-AzVM -Name $VmName -ResourceGroupName $ResourceGroupName -Force
+}

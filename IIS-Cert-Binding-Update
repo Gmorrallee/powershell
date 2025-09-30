@@ -1,0 +1,62 @@
+Param(
+ [string]$VmName,
+ [string]$ResourceGroupName
+)
+
+Write-Output "Connecting to azure via Connect-AzAccount -Identity"
+Connect-AzAccount -Identity 
+Write-Output "Successfully connected with Automation account's Managed Identity"
+
+# Script which should run inside the Azure VMs (Edit this)
+$scriptCode = 'Import-Module webadministration
+[DateTime] $ValidThrough = (Get-Date) + (New-TimeSpan -Days 30)
+[DateTime] $ValidFrom = (Get-Date)
+Get-ChildItem -Path IIS:SSLBindings | ForEach-Object -Process `
+{
+    if ($_.Sites)
+    {
+        $certificate = Get-ChildItem -Path CERT:LocalMachine/My |
+            Where-Object -Property Thumbprint -EQ -Value $_.Thumbprint | where-object -Property NotAfter -lt $ValidThrough
+ 
+        [PsCustomObject]@{
+            Sites                        = $_.Sites.Value
+            CertificateFriendlyName      = $certificate.FriendlyName
+            CertificateDnsNameList       = $certificate.DnsNameList
+            CertificateNotAfter          = $certificate.NotAfter
+            CertificateIssuer            = $certificate.Issuer
+            Thumbprint                   = $_.Thumbprint
+        }
+        $CertDNSold = $certificate.DnsNameList
+        $CertDNS = ("$CertDNSold").split(" ")[0]
+        $CertOldThumb = $certificate.Thumbprint
+ 
+        echo $CertDNS
+        echo $CertOldThumb
+ 
+        $NewCertificate = Get-ChildItem -Path CERT:LocalMachine/My |
+            Where-Object -Property DnsNameList -eq $CertDNS | where-object -Property NotAfter -gt $ValidThrough | Where-Object -Property NotBefor -le $ValidFrom
+ 
+        [PsCustomObject]@{
+            Sites                        = $_.Sites.Value
+            CertificateFriendlyName      = $Newcertificate.FriendlyName
+            CertificateDnsNameList       = $Newcertificate.DnsNameList
+            CertificateNotAfter          = $Newcertificate.NotAfter
+            CertificateIssuer            = $Newcertificate.Issuer
+            Thumbprint                   = $NewCertificate.Thumbprint
+            }
+        $CertNewThumb = $NewCertificate.Thumbprint
+        echo $CertNewThumb
+        C:\Windows\System32\inetsrv\appcmd.exe renew binding /oldcert:$CertOldThumb /newcert:$CertNewThumb
+ 
+        
+    }
+} '
+
+#Get all Azure VMs which are in running state and are running Windows
+$myAzureVMs = Get-AzVM -Name $VmName -ResourceGroupName $ResourceGroupName -status | Where-Object {$_.PowerState -eq "VM running" -and $_.StorageProfile.OSDisk.OSType -eq "Windows"}
+Write-Output "The following VMs are running and are running Windows:" 
+Write-Output $VmName
+
+# Run the script against all the listed VMs
+Write-Output "Run Script Against Machines"
+Invoke-AzVMRunCommand -ResourceGroupName $ResourceGroupName -Name $VmName -CommandId 'RunPowerShellScript' -ScriptString $scriptCode
